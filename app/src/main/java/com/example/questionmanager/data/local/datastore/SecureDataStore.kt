@@ -7,9 +7,9 @@ import androidx.security.crypto.MasterKey
 import com.example.questionmanager.util.Constants
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,13 +30,18 @@ class SecureDataStore @Inject constructor(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    fun getApiKey(): Flow<String> = callbackFlow {
-        trySend(encryptedPrefs.getString(Constants.KEY_API_KEY, "") ?: "")
-        awaitClose()
-    }
+    /**
+     * 使用 StateFlow 保证 API Key 保存后立即对所有收集者可见
+     */
+    private val _apiKeyFlow = MutableStateFlow(
+        encryptedPrefs.getString(Constants.KEY_API_KEY, "") ?: ""
+    )
+
+    fun getApiKey(): Flow<String> = _apiKeyFlow.asStateFlow()
 
     suspend fun saveApiKey(key: String) = withContext(Dispatchers.IO) {
-        encryptedPrefs.edit().putString(Constants.KEY_API_KEY, key).apply()
+        encryptedPrefs.edit().putString(Constants.KEY_API_KEY, key).commit()
+        _apiKeyFlow.value = key
     }
 }
 

@@ -6,11 +6,17 @@ import kotlinx.serialization.Serializable
 /**
  * SSE 流式响应数据块
  * DeepSeek API 在 stream=true 时返回的每个 data: 行
+ * 文档: https://api-docs.deepseek.com/api/create-chat-completion (stream)
  */
 @Serializable
 data class StreamChunk(
     val id: String = "",
-    val choices: List<StreamChoice> = emptyList()
+    @SerialName("object")
+    val objectType: String = "",
+    val created: Long = 0L,
+    val model: String = "",
+    val choices: List<StreamChoice> = emptyList(),
+    val usage: Usage? = null
 )
 
 @Serializable

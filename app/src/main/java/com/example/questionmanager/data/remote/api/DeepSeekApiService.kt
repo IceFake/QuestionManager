@@ -10,7 +10,12 @@ import retrofit2.http.Streaming
 
 interface DeepSeekApiService {
 
-    @POST("v1/chat/completions")
+    /**
+     * DeepSeek Chat Completions API
+     * 官方文档: https://api-docs.deepseek.com/api/create-chat-completion
+     * Endpoint: POST https://api.deepseek.com/chat/completions
+     */
+    @POST("chat/completions")
     suspend fun chatCompletion(
         @Header("Authorization") authHeader: String,
         @Body request: DeepSeekRequest
@@ -18,9 +23,10 @@ interface DeepSeekApiService {
 
     /**
      * SSE 流式接口 — stream=true 时使用
+     * 同一端点，Retrofit @Streaming 注解返回原始 ResponseBody
      */
     @Streaming
-    @POST("v1/chat/completions")
+    @POST("chat/completions")
     suspend fun chatCompletionStream(
         @Header("Authorization") authHeader: String,
         @Body request: DeepSeekRequest

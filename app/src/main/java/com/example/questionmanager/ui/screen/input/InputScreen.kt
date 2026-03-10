@@ -12,8 +12,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
@@ -32,7 +30,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -100,15 +97,22 @@ fun InputScreen(
                 Tab(
                     selected = tabIndex == 1,
                     onClick = { viewModel.setInputMode(InputMode.MANUAL) },
-                    text = { Text("手动输入") }
+                    text = { Text("内容输入") }
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // 输入区域
             when (uiState.inputMode) {
                 InputMode.URL -> UrlInputSection(uiState, viewModel)
                 InputMode.MANUAL -> ManualInputSection(uiState, viewModel)
+            }
+
+            // AI 解析结果（两种模式共用）
+            if (uiState.parsedQuestions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                ParsedQuestionsSection(uiState, viewModel)
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -122,13 +126,16 @@ fun InputScreen(
             Button(
                 onClick = { viewModel.confirmAndGenerate() },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !uiState.isSubmitting && !uiState.isParsing
+                enabled = !uiState.isSubmitting
+                        && !uiState.isParsing
+                        && uiState.parsedQuestions.any { it.isSelected }
             ) {
                 if (uiState.isSubmitting) {
                     LoadingIndicator()
                     Spacer(modifier = Modifier.width(8.dp))
                 }
-                Text("确认并生成答案")
+                val count = uiState.parsedQuestions.count { it.isSelected }
+                Text(if (count > 0) "确认并生成答案 ($count 条)" else "确认并生成答案")
             }
         }
     }
@@ -143,6 +150,7 @@ private fun UrlInputSection(
         value = uiState.url,
         onValueChange = { viewModel.updateUrl(it) },
         label = { Text("请输入网址 URL") },
+        placeholder = { Text("https://example.com/article") },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         enabled = !uiState.isParsing
@@ -152,42 +160,14 @@ private fun UrlInputSection(
 
     OutlinedButton(
         onClick = { viewModel.parseUrl() },
-        enabled = !uiState.isParsing && uiState.url.isNotBlank()
+        enabled = !uiState.isParsing && uiState.url.isNotBlank(),
+        modifier = Modifier.fillMaxWidth()
     ) {
         if (uiState.isParsing) {
             LoadingIndicator()
             Spacer(modifier = Modifier.width(8.dp))
         }
-        Text("解析")
-    }
-
-    // 解析结果
-    if (uiState.parsedQuestions.isNotEmpty()) {
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "解析结果 (${uiState.parsedQuestions.count { it.isSelected }}/${uiState.parsedQuestions.size}):",
-            style = MaterialTheme.typography.titleSmall
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        uiState.parsedQuestions.forEachIndexed { index, pq ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = pq.isSelected,
-                    onCheckedChange = { viewModel.toggleParsedQuestion(index) }
-                )
-                Text(
-                    text = pq.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
-            }
-        }
+        Text("AI 解析网址内容")
     }
 }
 
@@ -196,34 +176,65 @@ private fun ManualInputSection(
     uiState: InputViewModel.InputUiState,
     viewModel: InputViewModel
 ) {
-    uiState.manualQuestions.forEachIndexed { index, question ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = question,
-                onValueChange = { viewModel.updateManualQuestion(index, it) },
-                label = { Text("问题 ${index + 1}") },
-                modifier = Modifier.weight(1f),
-                singleLine = true
-            )
-            if (uiState.manualQuestions.size > 1) {
-                IconButton(onClick = { viewModel.removeManualQuestion(index) }) {
-                    Icon(Icons.Default.Close, contentDescription = "删除")
-                }
-            }
-        }
-    }
+    OutlinedTextField(
+        value = uiState.manualContent,
+        onValueChange = { viewModel.updateManualContent(it) },
+        label = { Text("输入问题或内容") },
+        placeholder = { Text("输入一个或多个问题、一段文本，AI 将自动整理为问题条目...") },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(160.dp),
+        maxLines = 10,
+        enabled = !uiState.isParsing
+    )
 
     Spacer(modifier = Modifier.height(8.dp))
 
-    TextButton(onClick = { viewModel.addManualQuestion() }) {
-        Icon(Icons.Default.Add, contentDescription = null)
-        Spacer(modifier = Modifier.width(4.dp))
-        Text("添加更多问题")
+    OutlinedButton(
+        onClick = { viewModel.parseContent() },
+        enabled = !uiState.isParsing && uiState.manualContent.isNotBlank(),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        if (uiState.isParsing) {
+            LoadingIndicator()
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text("AI 整理为问题条目")
+    }
+}
+
+/**
+ * AI 解析后的问题列表（两种模式共用）
+ */
+@Composable
+private fun ParsedQuestionsSection(
+    uiState: InputViewModel.InputUiState,
+    viewModel: InputViewModel
+) {
+    val selectedCount = uiState.parsedQuestions.count { it.isSelected }
+    Text(
+        text = "解析结果 ($selectedCount/${uiState.parsedQuestions.size} 已选):",
+        style = MaterialTheme.typography.titleSmall
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+
+    uiState.parsedQuestions.forEachIndexed { index, pq ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = pq.isSelected,
+                onCheckedChange = { viewModel.toggleParsedQuestion(index) }
+            )
+            Text(
+                text = pq.text,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
     }
 }
 
