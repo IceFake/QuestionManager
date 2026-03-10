@@ -103,6 +103,9 @@ dependencies {
     implementation(libs.paging.compose)
     implementation(libs.room.paging)
 
+    // Markdown
+    implementation(libs.markdown.renderer)
+
     // Test
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
