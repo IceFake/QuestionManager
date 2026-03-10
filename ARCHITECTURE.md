@@ -1285,10 +1285,11 @@ class AiRepository @Inject constructor(
 ```
 
 > **限流策略说明**:
-> - 使用 `kotlinx.coroutines.sync.Semaphore(permits = 3)` 控制并发上限
-> - 所有 AI 请求通过 `apiSemaphore.withPermit { }` 获取许可后才执行
-> - 遇到 HTTP 429 (Rate Limit) 时自动等待 5 秒后重试
-> - `generateAnswersBatch()` 封装了批量生成逻辑，供 ViewModel 层直接调用
+> - 使用 `kotlinx.coroutines.sync.Semaphore(permits = 3)` 控制单次调用的并发上限
+> - 所有单次 AI 请求通过 `apiSemaphore.withPermit { }` 获取许可后才执行
+> - 批量生成使用 `BatchGenerateAnswerUseCase`，通过 `generateAnswerWithRetry()` 绕过全局信号量，由批次级信号量独立控制并发
+> - `generateAnswerWithRetry()` 使用 `RetryUtil.withRetry()` 实现指数退避重试，针对 429/5xx 错误自动重试
+> - 批量并发数默认为 `BATCH_MAX_CONCURRENT = 5`，每个问题独立对话、独立重试
 
 ### 10.3 SettingsRepository
 
@@ -1401,14 +1402,25 @@ InputViewModel.confirmAndGenerate()
 QuestionRepository.insertQuestions() → 批量插入 (status=PENDING)
     │
     ▼
-AiRepository.generateAnswersBatch() ← 内部 Semaphore(3) 限流
-    │  (最多 3 个请求并发，其余排队等待)
+BatchGenerateAnswerUseCase.startBatch()
+    │  创建独立 SupervisorJob 作用域
+    │  每个问题通过独立对话并行生成
     │
-    ├── 对每个条目:
-    │   ├── QuestionRepository.updateAnswer(id, status=GENERATING)
-    │   ├── apiSemaphore.withPermit { DeepSeek API 调用 }
-    │   │   └── HTTP 429 → 自动等待 5s 重试
-    │   └── QuestionRepository.updateAnswer(id, answer, status=COMPLETED/ERROR)
+    ├── 创建批次级 Semaphore(BATCH_MAX_CONCURRENT=5)
+    ├── 所有问题标记为 GENERATING
+    ├── 对每个条目 (并行, 最多5个同时):
+    │   ├── batchSemaphore.withPermit { }
+    │   ├── AiRepository.generateAnswerWithRetry()
+    │   │   └── RetryUtil.withRetry() 指数退避
+    │   │       ├── 初始延迟 2s, 最大 30s, 退避因子 2x
+    │   │       ├── 最多重试 4 次
+    │   │       └── 仅对 429/5xx 重试
+    │   ├── 成功 → updateAnswer(COMPLETED)
+    │   └── 失败 → updateAnswer(ERROR), 记录到 failedIds
+    │
+    ├── SupervisorJob 保证单个任务失败不影响其他
+    ├── 实时更新 BatchSessionState (进度/成功/失败计数)
+    └── 支持 retryFailed() 重试失败项, cancelBatch() 取消批次
     │
     ▼
 UI 通过 Flow 自动更新列表状态
@@ -1436,7 +1448,10 @@ DrillDownViewModel.confirmSelected()
 对每个选中的引申问题:
     ├── QuestionRepository.insertQuestion() → 新条目 (childId)
     ├── QuestionRepository.createLink(parentId, childId, DRILL_DOWN)
-    └── 异步 AiRepository.generateAnswer() → 生成答案
+    │
+    ▼
+BatchGenerateAnswerUseCase.startBatch()
+    └── 并行为每个新条目生成答案（独立对话，指数退避重试）
     │
     ▼
 导航回 DetailScreen → 链接列表自动更新

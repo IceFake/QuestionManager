@@ -119,6 +119,57 @@ class AiRepository @Inject constructor(
     }
 
     /**
+     * 带指数退避重试的答案生成
+     * 每次调用是一个完全独立的 API 对话，不共享上下文。
+     * 专为批量并行场景设计：
+     *   - 不经过全局 apiSemaphore（由调用方通过批次级信号量控制并发）
+     *   - 内置指数退避重试，针对 429/5xx 等可重试错误
+     */
+    suspend fun generateAnswerWithRetry(
+        question: String,
+        systemPrompt: String,
+        maxRetries: Int = Constants.BATCH_MAX_RETRIES,
+        initialDelayMs: Long = Constants.BATCH_RETRY_INITIAL_DELAY_MS
+    ): Result<String> {
+        return RetryUtil.withRetry(
+            maxRetries = maxRetries,
+            initialDelayMs = initialDelayMs,
+            maxDelayMs = Constants.BATCH_RETRY_MAX_DELAY_MS,
+            factor = 2.0,
+            shouldRetry = { e ->
+                e is HttpException && RetryUtil.isRetryableHttpError(e.code())
+            }
+        ) {
+            syncBaseUrl()
+            val apiKey = settingsRepository.apiKeyFlow.first()
+            if (apiKey.isBlank()) {
+                throw Exception("请先在设置中配置 API Key")
+            }
+
+            val model = settingsRepository.modelFlow.first()
+            val temperature = settingsRepository.temperatureFlow.first()
+            val maxTokens = settingsRepository.maxTokensFlow.first()
+
+            val request = DeepSeekRequest(
+                model = model,
+                messages = listOf(
+                    Message(role = "system", content = systemPrompt),
+                    Message(role = "user", content = "请回答以下问题：\n\n$question")
+                ),
+                temperature = temperature,
+                maxTokens = maxTokens
+            )
+            val response = deepSeekApiService.chatCompletion(
+                authHeader = "Bearer $apiKey",
+                request = request
+            )
+            val answer = response.choices.firstOrNull()?.message?.content
+                ?: throw Exception("AI 返回内容为空")
+            Result.success(answer)
+        }
+    }
+
+    /**
      * 基于问题和答案生成引申问题列表 (受限流保护)
      * 响应解析使用 AiResponseParser 进行多策略容错
      */

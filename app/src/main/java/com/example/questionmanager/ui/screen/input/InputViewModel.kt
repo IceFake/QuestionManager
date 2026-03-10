@@ -6,7 +6,7 @@ import com.example.questionmanager.data.repository.QuestionRepository
 import com.example.questionmanager.domain.model.Prompt
 import com.example.questionmanager.domain.model.Question
 import com.example.questionmanager.domain.model.QuestionStatus
-import com.example.questionmanager.domain.usecase.GenerateAnswerUseCase
+import com.example.questionmanager.domain.usecase.BatchGenerateAnswerUseCase
 import com.example.questionmanager.domain.usecase.ParseContentUseCase
 import com.example.questionmanager.domain.usecase.ParseUrlUseCase
 import com.example.questionmanager.util.Constants
@@ -25,7 +25,7 @@ class InputViewModel @Inject constructor(
     private val questionRepository: QuestionRepository,
     private val parseUrlUseCase: ParseUrlUseCase,
     private val parseContentUseCase: ParseContentUseCase,
-    private val generateAnswerUseCase: GenerateAnswerUseCase
+    private val batchGenerateAnswerUseCase: BatchGenerateAnswerUseCase
 ) : ViewModel() {
 
     data class InputUiState(
@@ -151,6 +151,7 @@ class InputViewModel @Inject constructor(
 
     /**
      * 确认选中的条目并生成答案
+     * 使用 BatchGenerateAnswerUseCase 并行发起独立对话，提高成功率
      */
     fun confirmAndGenerate() {
         viewModelScope.launch {
@@ -185,12 +186,12 @@ class InputViewModel @Inject constructor(
                 val selectedPrompt = _uiState.value.availablePrompts.find { it.id == promptId }
                 val systemPrompt = selectedPrompt?.systemPrompt ?: Constants.DEFAULT_SYSTEM_PROMPT
 
-                // 异步为每个问题生成答案
-                ids.forEach { id ->
-                    launch {
-                        generateAnswerUseCase(id, systemPrompt)
-                    }
-                }
+                // 通过批量用例并行生成答案（每个问题独立对话，独立重试）
+                batchGenerateAnswerUseCase.startBatch(
+                    questionIds = ids,
+                    systemPrompt = systemPrompt,
+                    scope = viewModelScope
+                )
 
                 _uiState.value = _uiState.value.copy(isSubmitting = false, isComplete = true)
             } catch (e: Exception) {

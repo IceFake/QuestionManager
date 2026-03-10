@@ -6,8 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.questionmanager.data.repository.QuestionRepository
 import com.example.questionmanager.domain.model.Prompt
 import com.example.questionmanager.domain.model.Question
+import com.example.questionmanager.domain.usecase.BatchGenerateAnswerUseCase
 import com.example.questionmanager.domain.usecase.DrillDownUseCase
-import com.example.questionmanager.domain.usecase.GenerateAnswerUseCase
 import com.example.questionmanager.util.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +22,7 @@ data class SuggestedQuestion(val text: String, val isSelected: Boolean = true)
 class DrillDownViewModel @Inject constructor(
     private val questionRepository: QuestionRepository,
     private val drillDownUseCase: DrillDownUseCase,
-    private val generateAnswerUseCase: GenerateAnswerUseCase,
+    private val batchGenerateAnswerUseCase: BatchGenerateAnswerUseCase,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -131,12 +131,12 @@ class DrillDownViewModel @Inject constructor(
                 val selectedPrompt = _uiState.value.availablePrompts.find { it.id == promptId }
                 val systemPrompt = selectedPrompt?.systemPrompt ?: Constants.DEFAULT_SYSTEM_PROMPT
 
-                // 异步为每个新条目生成答案
-                newIds.forEach { id ->
-                    launch {
-                        generateAnswerUseCase(id, systemPrompt)
-                    }
-                }
+                // 通过批量用例并行生成答案（每个问题独立对话，独立重试）
+                batchGenerateAnswerUseCase.startBatch(
+                    questionIds = newIds,
+                    systemPrompt = systemPrompt,
+                    scope = viewModelScope
+                )
 
                 _uiState.value = _uiState.value.copy(
                     isSubmitting = false,

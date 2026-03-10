@@ -19,6 +19,16 @@ object Constants {
     // AI 并发限制
     const val AI_MAX_CONCURRENT_REQUESTS = 3
 
+    // 批量生成并发配置
+    /** 批量生成时每批次最大并行对话数 */
+    const val BATCH_MAX_CONCURRENT = 5
+    /** 批量生成时单个问题最大重试次数 */
+    const val BATCH_MAX_RETRIES = 4
+    /** 重试初始延迟 (毫秒) */
+    const val BATCH_RETRY_INITIAL_DELAY_MS = 2000L
+    /** 重试最大延迟 (毫秒) */
+    const val BATCH_RETRY_MAX_DELAY_MS = 30000L
+
     // 网页抓取超时
     const val WEB_PARSE_TIMEOUT_MS = 15_000
 
