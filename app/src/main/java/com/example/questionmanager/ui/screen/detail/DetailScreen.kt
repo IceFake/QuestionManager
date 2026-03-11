@@ -11,16 +11,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +41,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -41,8 +51,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.questionmanager.domain.model.QuestionStatus
@@ -132,44 +144,32 @@ fun DetailScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
-                // 问题文本
-                Text(
-                    text = question.question,
-                    style = MaterialTheme.typography.titleLarge
+                QuestionCard(
+                    questionText = question.question,
+                    sourceUrl = question.sourceUrl,
+                    createdAt = question.createdAt.toFormattedDate(),
+                    status = question.status
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 元信息
-                question.sourceUrl?.let { url ->
-                    Text(
-                        text = "来源: $url",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Text(
-                    text = "创建时间: ${question.createdAt.toFormattedDate()}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // 答案区域
-                Text(
-                    text = "答案",
-                    style = MaterialTheme.typography.titleMedium
+                AnswerHeader(
+                    status = question.status,
+                    streamingAnswer = uiState.streamingAnswer
                 )
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 when {
-                    // 流式答案优先显示
                     uiState.streamingAnswer != null -> {
                         if (uiState.streamingAnswer!!.isNotBlank()) {
                             AnswerSection(answer = uiState.streamingAnswer!!)
                         }
-                        Row(modifier = Modifier.padding(top = 8.dp)) {
+                        Row(
+                            modifier = Modifier.padding(top = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             LoadingIndicator(fullScreen = false)
                             Text(
                                 text = "正在生成...",
@@ -180,19 +180,12 @@ fun DetailScreen(
                         }
                     }
                     question.status == QuestionStatus.PENDING -> {
-                        Text(
-                            text = "等待生成答案...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        EmptyAnswerCard(message = "等待生成答案")
                     }
                     question.status == QuestionStatus.GENERATING -> {
-                        LoadingIndicator(fullScreen = false)
-                        Text(
-                            text = "正在生成答案...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp)
+                        EmptyAnswerCard(
+                            message = "正在生成答案...",
+                            isLoading = true
                         )
                     }
                     question.status == QuestionStatus.COMPLETED -> {
@@ -201,10 +194,9 @@ fun DetailScreen(
                         }
                     }
                     question.status == QuestionStatus.ERROR -> {
-                        Text(
-                            text = "答案生成失败",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
+                        EmptyAnswerCard(
+                            message = "答案生成失败",
+                            isError = true
                         )
                     }
                 }
@@ -220,29 +212,28 @@ fun DetailScreen(
                     if (uiState.isRegenerating) {
                         LoadingIndicator()
                     } else {
-                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
-                    Text(
-                        text = "重新生成答案",
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("重新生成答案")
                 }
 
                 // 关联问题
                 if (uiState.parentQuestions.isNotEmpty() || uiState.childQuestions.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
+                    
                     Text(
                         text = "关联问题",
                         style = MaterialTheme.typography.titleMedium
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     if (uiState.parentQuestions.isNotEmpty()) {
-                        Text(
-                            text = "来源:",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        SectionLabel(text = "来源")
                         FlowRow(
                             modifier = Modifier.padding(vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -259,12 +250,7 @@ fun DetailScreen(
                     }
 
                     if (uiState.childQuestions.isNotEmpty()) {
-                        Text(
-                            text = "引申:",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
+                        SectionLabel(text = "引申", modifier = Modifier.padding(top = 12.dp))
                         FlowRow(
                             modifier = Modifier.padding(vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -289,15 +275,198 @@ fun DetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = question.status == QuestionStatus.COMPLETED
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = null)
-                    Text(
-                        text = "深挖此问题",
-                        modifier = Modifier.padding(start = 8.dp)
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("深挖此问题")
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun QuestionCard(
+    questionText: String,
+    sourceUrl: String?,
+    createdAt: String,
+    status: QuestionStatus
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = questionText,
+                style = MaterialTheme.typography.titleLarge
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusChip(status = status)
+                }
+                
+                Column(horizontalAlignment = Alignment.End) {
+                    sourceUrl?.let {
+                        Text(
+                            text = "来源",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.width(150.dp)
+                        )
+                    }
+                }
+            }
+            
+            if (sourceUrl != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            
+            Text(
+                text = createdAt,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(status: QuestionStatus) {
+    val (icon, text, color) = when (status) {
+        QuestionStatus.PENDING -> Triple(Icons.Default.HourglassEmpty, "待处理", MaterialTheme.colorScheme.onSurfaceVariant)
+        QuestionStatus.GENERATING -> Triple(Icons.Default.Sync, "生成中", MaterialTheme.colorScheme.tertiary)
+        QuestionStatus.COMPLETED -> Triple(Icons.Default.CheckCircle, "已完成", MaterialTheme.colorScheme.primary)
+        QuestionStatus.ERROR -> Triple(Icons.Default.Error, "失败", MaterialTheme.colorScheme.error)
+    }
+    
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = color.copy(alpha = 0.1f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = color
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                color = color
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnswerHeader(
+    status: QuestionStatus,
+    streamingAnswer: String?
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "答案",
+            style = MaterialTheme.typography.titleMedium
+        )
+        if (status == QuestionStatus.COMPLETED && streamingAnswer == null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+            ) {
+                Text(
+                    text = "AI 生成",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun EmptyAnswerCard(
+    message: String,
+    isLoading: Boolean = false,
+    isError: Boolean = false
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isError) {
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isLoading) {
+                LoadingIndicator(fullScreen = false)
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isError) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
         }
     }
 }
