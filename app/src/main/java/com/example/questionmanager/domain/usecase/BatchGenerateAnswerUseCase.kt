@@ -3,6 +3,7 @@ package com.example.questionmanager.domain.usecase
 import android.util.Log
 import com.example.questionmanager.data.repository.AiRepository
 import com.example.questionmanager.data.repository.QuestionRepository
+import com.example.questionmanager.domain.model.Question
 import com.example.questionmanager.domain.model.QuestionStatus
 import com.example.questionmanager.util.Constants
 import kotlinx.coroutines.CoroutineScope
@@ -164,12 +165,17 @@ class BatchGenerateAnswerUseCase @Inject constructor(
                 return false
             }
 
+        // 获取所有祖先问题以提供完整上下文
+        val ancestors = questionRepository.getAllAncestors(questionId)
+        val ancestorContext = buildAncestorContext(ancestors)
+
         return try {
             val result = aiRepository.generateAnswerWithRetry(
                 question = question.question,
                 systemPrompt = systemPrompt,
                 maxRetries = Constants.BATCH_MAX_RETRIES,
-                initialDelayMs = Constants.BATCH_RETRY_INITIAL_DELAY_MS
+                initialDelayMs = Constants.BATCH_RETRY_INITIAL_DELAY_MS,
+                ancestorContext = ancestorContext
             )
             result.onSuccess { answer ->
                 questionRepository.updateAnswer(questionId, answer, QuestionStatus.COMPLETED)
@@ -185,6 +191,24 @@ class BatchGenerateAnswerUseCase @Inject constructor(
             } catch (_: Exception) { }
             false
         }
+    }
+    
+    /**
+     * 构建祖先问题上下文字符串
+     * 格式：每个祖先问题一行，包含问题和答案（如果有）
+     */
+    private fun buildAncestorContext(ancestors: List<Question>): String {
+        if (ancestors.isEmpty()) return ""
+        
+        return buildString {
+            ancestors.forEachIndexed { index, ancestor ->
+                append("${index + 1}. 问题：${ancestor.question}")
+                if (!ancestor.answer.isNullOrEmpty()) {
+                    append("\n   答案：${ancestor.answer}")
+                }
+                append("\n")
+            }
+        }.trim()
     }
 
     /**

@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -57,6 +58,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.questionmanager.domain.model.Prompt
 import com.example.questionmanager.domain.model.QuestionStatus
 import com.example.questionmanager.ui.component.AnswerSection
 import com.example.questionmanager.ui.component.LinkedQuestionChip
@@ -203,7 +205,16 @@ fun DetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 重新生成按钮
+                if (uiState.prompts.isNotEmpty()) {
+                    PromptSelector(
+                        prompts = uiState.prompts,
+                        selectedPromptId = uiState.selectedPromptId,
+                        onPromptSelected = { viewModel.selectPrompt(it) },
+                        enabled = !uiState.isRegenerating
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
                 OutlinedButton(
                     onClick = { viewModel.regenerateAnswer() },
                     enabled = !uiState.isRegenerating,
@@ -285,6 +296,74 @@ fun DetailScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PromptSelector(
+    prompts: List<Prompt>,
+    selectedPromptId: Long?,
+    onPromptSelected: (Long?) -> Unit,
+    enabled: Boolean
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedPrompt = prompts.find { it.id == selectedPromptId }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedCard(
+            onClick = { if (enabled) expanded = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "提示词模板",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = selectedPrompt?.name ?: "默认",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            prompts.forEach { prompt ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                text = prompt.name,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            if (prompt.isDefault) {
+                                Text(
+                                    text = "默认",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        onPromptSelected(prompt.id)
+                        expanded = false
+                    }
+                )
             }
         }
     }

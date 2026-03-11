@@ -2,6 +2,7 @@ package com.example.questionmanager.domain.usecase
 
 import com.example.questionmanager.data.repository.AiRepository
 import com.example.questionmanager.data.repository.QuestionRepository
+import com.example.questionmanager.domain.model.Question
 import com.example.questionmanager.domain.model.QuestionStatus
 import com.example.questionmanager.util.Constants
 import kotlinx.coroutines.flow.Flow
@@ -31,7 +32,10 @@ class GenerateAnswerUseCase @Inject constructor(
 
         questionRepository.updateAnswer(questionId, null, QuestionStatus.GENERATING)
 
-        val result = aiRepository.generateAnswer(question.question, prompt)
+        val ancestors = questionRepository.getAllAncestors(questionId)
+        val ancestorContext = buildAncestorContext(ancestors)
+
+        val result = aiRepository.generateAnswer(question.question, prompt, ancestorContext)
 
         result.onSuccess { answer ->
             questionRepository.updateAnswer(questionId, answer, QuestionStatus.COMPLETED)
@@ -56,8 +60,11 @@ class GenerateAnswerUseCase @Inject constructor(
 
         questionRepository.updateAnswer(questionId, null, QuestionStatus.GENERATING)
 
+        val ancestors = questionRepository.getAllAncestors(questionId)
+        val ancestorContext = buildAncestorContext(ancestors)
+
         var lastContent = ""
-        aiRepository.generateAnswerStream(question.question, prompt)
+        aiRepository.generateAnswerStream(question.question, prompt, ancestorContext)
             .onCompletion { error ->
                 if (error == null && lastContent.isNotBlank()) {
                     questionRepository.updateAnswer(questionId, lastContent, QuestionStatus.COMPLETED)
@@ -73,6 +80,20 @@ class GenerateAnswerUseCase @Inject constructor(
                 lastContent = partial
                 emit(partial)
             }
+    }
+
+    private fun buildAncestorContext(ancestors: List<Question>): String {
+        if (ancestors.isEmpty()) return ""
+        
+        return buildString {
+            ancestors.forEachIndexed { index, ancestor ->
+                append("${index + 1}. 问题：${ancestor.question}")
+                if (!ancestor.answer.isNullOrEmpty()) {
+                    append("\n   答案：${ancestor.answer}")
+                }
+                append("\n")
+            }
+        }.trim()
     }
 }
 

@@ -22,10 +22,35 @@ class DrillDownUseCase @Inject constructor(
         val question = questionRepository.getQuestionById(questionId)
             ?: return Result.failure(Exception("问题不存在"))
 
+        // 获取所有祖先问题以提供完整上下文
+        val ancestors = questionRepository.getAllAncestors(questionId)
+        
+        // 构建祖先上下文字符串
+        val ancestorContext = buildAncestorContext(ancestors)
+
         return aiRepository.generateDrillDownQuestions(
             question = question.question,
-            answer = question.answer ?: ""
+            answer = question.answer ?: "",
+            ancestorContext = ancestorContext
         )
+    }
+    
+    /**
+     * 构建祖先问题上下文字符串
+     * 格式：每个祖先问题一行，包含问题和答案（如果有）
+     */
+    private fun buildAncestorContext(ancestors: List<Question>): String {
+        if (ancestors.isEmpty()) return ""
+        
+        return buildString {
+            ancestors.forEachIndexed { index, ancestor ->
+                append("${index + 1}. 问题：${ancestor.question}")
+                if (!ancestor.answer.isNullOrEmpty()) {
+                    append("\n   答案：${ancestor.answer}")
+                }
+                append("\n")
+            }
+        }.trim()
     }
 
     /**

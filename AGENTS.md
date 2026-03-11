@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-03-10
-**Commit:** dc0b28e
+**Generated:** 2026-03-11
+**Commit:** a953731
 **Branch:** master
 
 ## OVERVIEW
@@ -69,6 +69,10 @@ Key architectural components (see ARCHITECTURE.md for full details):
 - **Streaming answers**: Support for incremental answer generation with `Flow<String>`.
 - **Encrypted storage**: Sensitive data (API key) encrypted via `security‑crypto` `EncryptedSharedPreferences`.
 - **Default prompts**: Seeded database with four default system prompts on first launch.
+- **FTS + LIKE fallback search**: Room FTS4 with Chinese tokenization + LIKE fallback on error.
+- **Entity‑domain mapping**: Pure Kotlin domain models with `toDomain()`/`toEntity()` extension mapping.
+- **Dynamic base URL**: OkHttp interceptor rewrites API base URL at runtime for custom endpoints.
+- **Retry with backoff**: Exponential backoff retry logic with HTTP error detection.
 
 ## COMMANDS
 ```bash
@@ -91,6 +95,20 @@ Key architectural components (see ARCHITECTURE.md for full details):
 # Lint check
 ./gradlew lint
 ```
+
+## CI/CD (GitHub Actions)
+- **Workflow file**: `.github/workflows/android.yml`
+- **Issues detected**:
+  1. **Overly broad permissions**: `contents: write` at workflow level (should be scoped per-job)
+  2. **Duplicate build in release job**: Rebuilds APK instead of downloading artifact from `build` job
+  3. **Inverted artifact upload**: `if: failure()` uploads artifacts only when build fails (should be on success)
+  4. **Missing job dependency**: No `needs: build` + artifact download in release job
+  5. **Implicit Android SDK**: No explicit SDK setup (relies on `ubuntu-latest` having it)
+- **Recommendations**:
+  - Scope permissions per-job: `build` = `contents: read`, `release` = `contents: write`
+  - Pass artifact from `build` to `release` job
+  - Change artifact upload to `if: always()` or remove condition
+  - Add explicit Android SDK setup with caching
 
 ## NOTES
 - **Room schemas**: Export is enabled; `app/schemas/` directory must be kept under version control.

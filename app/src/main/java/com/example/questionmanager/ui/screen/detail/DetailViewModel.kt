@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.questionmanager.data.repository.QuestionRepository
+import com.example.questionmanager.domain.model.Prompt
 import com.example.questionmanager.domain.model.Question
 import com.example.questionmanager.domain.usecase.GenerateAnswerUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +30,8 @@ class DetailViewModel @Inject constructor(
         val question: Question? = null,
         val parentQuestions: List<Question> = emptyList(),
         val childQuestions: List<Question> = emptyList(),
+        val prompts: List<Prompt> = emptyList(),
+        val selectedPromptId: Long? = null,
         val isRegenerating: Boolean = false,
         val streamingAnswer: String? = null,
         val isDeleted: Boolean = false,
@@ -42,13 +45,17 @@ class DetailViewModel @Inject constructor(
         loadQuestion()
         loadParentQuestions()
         loadChildQuestions()
+        loadPrompts()
     }
 
     private fun loadQuestion() {
         viewModelScope.launch {
             try {
                 val question = questionRepository.getQuestionById(questionId)
-                _uiState.value = _uiState.value.copy(question = question)
+                _uiState.value = _uiState.value.copy(
+                    question = question,
+                    selectedPromptId = question?.promptId
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message)
             }
@@ -57,6 +64,23 @@ class DetailViewModel @Inject constructor(
 
     fun refreshQuestion() {
         loadQuestion()
+    }
+
+    private fun loadPrompts() {
+        viewModelScope.launch {
+            questionRepository.getAllPrompts()
+                .catch { }
+                .collect { prompts ->
+                    _uiState.value = _uiState.value.copy(
+                        prompts = prompts,
+                        selectedPromptId = _uiState.value.selectedPromptId ?: prompts.find { it.isDefault }?.id
+                    )
+                }
+        }
+    }
+
+    fun selectPrompt(promptId: Long?) {
+        _uiState.value = _uiState.value.copy(selectedPromptId = promptId)
     }
 
     private fun loadParentQuestions() {
@@ -90,7 +114,10 @@ class DetailViewModel @Inject constructor(
                 error = null
             )
             try {
-                generateAnswerUseCase.stream(questionId)
+                val promptId = _uiState.value.selectedPromptId
+                val systemPrompt = promptId?.let { questionRepository.getPromptById(it)?.systemPrompt }
+
+                generateAnswerUseCase.stream(questionId, systemPrompt)
                     .catch { e ->
                         _uiState.value = _uiState.value.copy(
                             isRegenerating = false,

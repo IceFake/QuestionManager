@@ -56,7 +56,7 @@ class AiRepository @Inject constructor(
     /**
      * 为问题生成答案 (受限流保护)
      */
-    suspend fun generateAnswer(question: String, systemPrompt: String): Result<String> {
+    suspend fun generateAnswer(question: String, systemPrompt: String, ancestorContext: String = ""): Result<String> {
         return apiSemaphore.withPermit {
             try {
                 syncBaseUrl()
@@ -70,11 +70,20 @@ class AiRepository @Inject constructor(
                 val temperature = settingsRepository.temperatureFlow.first()
                 val maxTokens = settingsRepository.maxTokensFlow.first()
 
+                val userContent = buildString {
+                    if (ancestorContext.isNotEmpty()) {
+                        append("以下是问题背景（祖先问题）：\n")
+                        append(ancestorContext)
+                        append("\n\n")
+                    }
+                    append("请回答以下问题：\n\n$question")
+                }
+
                 val request = DeepSeekRequest(
                     model = model,
                     messages = listOf(
                         Message(role = "system", content = systemPrompt),
-                        Message(role = "user", content = "请回答以下问题：\n\n$question")
+                        Message(role = "user", content = userContent)
                     ),
                     temperature = temperature,
                     maxTokens = maxTokens
@@ -91,7 +100,7 @@ class AiRepository @Inject constructor(
                 Log.e(TAG, "HTTP ${e.code()} error: $errorBody", e)
                 if (e.code() == 429) {
                     delay(5000)
-                    return@withPermit generateAnswer(question, systemPrompt)
+                    return@withPermit generateAnswer(question, systemPrompt, ancestorContext)
                 }
                 val detail = if (errorBody != null) "$errorBody" else ""
                 Result.failure(Exception("${RetryUtil.friendlyErrorMessage(e)} $detail".trim()))
@@ -129,7 +138,8 @@ class AiRepository @Inject constructor(
         question: String,
         systemPrompt: String,
         maxRetries: Int = Constants.BATCH_MAX_RETRIES,
-        initialDelayMs: Long = Constants.BATCH_RETRY_INITIAL_DELAY_MS
+        initialDelayMs: Long = Constants.BATCH_RETRY_INITIAL_DELAY_MS,
+        ancestorContext: String = ""
     ): Result<String> {
         return RetryUtil.withRetry(
             maxRetries = maxRetries,
@@ -150,11 +160,20 @@ class AiRepository @Inject constructor(
             val temperature = settingsRepository.temperatureFlow.first()
             val maxTokens = settingsRepository.maxTokensFlow.first()
 
+            val userContent = buildString {
+                if (ancestorContext.isNotEmpty()) {
+                    append("以下是问题背景（祖先问题）：\n")
+                    append(ancestorContext)
+                    append("\n\n")
+                }
+                append("请回答以下问题：\n\n$question")
+            }
+
             val request = DeepSeekRequest(
                 model = model,
                 messages = listOf(
                     Message(role = "system", content = systemPrompt),
-                    Message(role = "user", content = "请回答以下问题：\n\n$question")
+                    Message(role = "user", content = userContent)
                 ),
                 temperature = temperature,
                 maxTokens = maxTokens
@@ -173,7 +192,7 @@ class AiRepository @Inject constructor(
      * 基于问题和答案生成引申问题列表 (受限流保护)
      * 响应解析使用 AiResponseParser 进行多策略容错
      */
-    suspend fun generateDrillDownQuestions(question: String, answer: String): Result<List<String>> {
+    suspend fun generateDrillDownQuestions(question: String, answer: String, ancestorContext: String = ""): Result<List<String>> {
         return apiSemaphore.withPermit {
             try {
                 syncBaseUrl()
@@ -191,11 +210,20 @@ class AiRepository @Inject constructor(
 2. 数组中每个元素是一个纯字符串
 3. 示例格式：["问题1", "问题2", "问题3", "问题4", "问题5"]"""
 
+                val userContent = buildString {
+                    if (ancestorContext.isNotEmpty()) {
+                        append("以下是问题背景（祖先问题）：\n")
+                        append(ancestorContext)
+                        append("\n\n")
+                    }
+                    append("原始问题：$question\n\n已有答案：$answer\n\n请基于以上背景生成引申问题。")
+                }
+
                 val request = DeepSeekRequest(
                     model = model,
                     messages = listOf(
                         Message(role = "system", content = systemPrompt),
-                        Message(role = "user", content = "原始问题：$question\n\n已有答案：$answer\n\n请生成引申问题。")
+                        Message(role = "user", content = userContent)
                     )
                 )
                 val response = deepSeekApiService.chatCompletion(
@@ -212,7 +240,7 @@ class AiRepository @Inject constructor(
                 Log.e(TAG, "generateDrillDownQuestions HTTP ${e.code()}: $errorBody", e)
                 if (e.code() == 429) {
                     delay(5000)
-                    return@withPermit generateDrillDownQuestions(question, answer)
+                    return@withPermit generateDrillDownQuestions(question, answer, ancestorContext)
                 }
                 val detail = if (errorBody != null) "$errorBody" else ""
                 Result.failure(Exception("${RetryUtil.friendlyErrorMessage(e)} $detail".trim()))
@@ -368,7 +396,7 @@ class AiRepository @Inject constructor(
      * 流式生成答案 — SSE (Server-Sent Events)
      * 逐步发射部分答案文本，调用方可实时更新 UI
      */
-    fun generateAnswerStream(question: String, systemPrompt: String): Flow<String> = flow {
+    fun generateAnswerStream(question: String, systemPrompt: String, ancestorContext: String = ""): Flow<String> = flow {
         apiSemaphore.withPermit {
             syncBaseUrl()
             val apiKey = settingsRepository.apiKeyFlow.first()
@@ -381,11 +409,20 @@ class AiRepository @Inject constructor(
             val temperature = settingsRepository.temperatureFlow.first()
             val maxTokens = settingsRepository.maxTokensFlow.first()
 
+            val userContent = buildString {
+                if (ancestorContext.isNotEmpty()) {
+                    append("以下是问题背景（祖先问题）：\n")
+                    append(ancestorContext)
+                    append("\n\n")
+                }
+                append("请回答以下问题：\n\n$question")
+            }
+
             val request = DeepSeekRequest(
                 model = model,
                 messages = listOf(
                     Message(role = "system", content = systemPrompt),
-                    Message(role = "user", content = "请回答以下问题：\n\n$question")
+                    Message(role = "user", content = userContent)
                 ),
                 temperature = temperature,
                 maxTokens = maxTokens,

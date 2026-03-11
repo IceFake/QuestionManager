@@ -31,6 +31,7 @@ class DrillDownViewModel @Inject constructor(
     data class DrillDownUiState(
         val originalQuestion: Question? = null,
         val suggestedQuestions: List<SuggestedQuestion> = emptyList(),
+        val customQuestions: List<SuggestedQuestion> = emptyList(),
         val isGenerating: Boolean = false,
         val isSubmitting: Boolean = false,
         val isComplete: Boolean = false,
@@ -106,14 +107,43 @@ class DrillDownViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(selectedPromptId = promptId)
     }
 
+    fun addCustomQuestion(text: String) {
+        if (text.isBlank()) return
+        val current = _uiState.value.customQuestions.toMutableList()
+        current.add(SuggestedQuestion(text, isSelected = true))
+        _uiState.value = _uiState.value.copy(customQuestions = current)
+    }
+
+    fun removeCustomQuestion(index: Int) {
+        val current = _uiState.value.customQuestions.toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            _uiState.value = _uiState.value.copy(customQuestions = current)
+        }
+    }
+
+    fun toggleCustomQuestion(index: Int) {
+        val current = _uiState.value.customQuestions.toMutableList()
+        if (index in current.indices) {
+            current[index] = current[index].copy(isSelected = !current[index].isSelected)
+            _uiState.value = _uiState.value.copy(customQuestions = current)
+        }
+    }
+
     fun confirmSelected() {
         viewModelScope.launch {
-            val selected = _uiState.value.suggestedQuestions
+            val aiSelected = _uiState.value.suggestedQuestions
                 .filter { it.isSelected }
                 .map { it.text }
 
-            if (selected.isEmpty()) {
-                _uiState.value = _uiState.value.copy(error = "请至少选择一个问题")
+            val customSelected = _uiState.value.customQuestions
+                .filter { it.isSelected }
+                .map { it.text }
+
+            val allSelected = aiSelected + customSelected
+
+            if (allSelected.isEmpty()) {
+                _uiState.value = _uiState.value.copy(error = "请至少选择一个或添加自定义问题")
                 return@launch
             }
 
@@ -122,7 +152,7 @@ class DrillDownViewModel @Inject constructor(
             try {
                 val newIds = drillDownUseCase.confirmSelected(
                     parentId = questionId,
-                    selectedQuestions = selected,
+                    selectedQuestions = allSelected,
                     promptId = _uiState.value.selectedPromptId
                 )
 

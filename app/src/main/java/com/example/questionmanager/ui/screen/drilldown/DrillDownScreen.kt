@@ -12,6 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -162,6 +164,18 @@ fun DrillDownScreen(
                 }
             }
 
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(16.dp))
+
+            CustomQuestionSection(
+                customQuestions = uiState.customQuestions,
+                onAddQuestion = { viewModel.addCustomQuestion(it) },
+                onRemoveQuestion = { viewModel.removeCustomQuestion(it) },
+                onToggleQuestion = { viewModel.toggleCustomQuestion(it) },
+                enabled = !uiState.isSubmitting
+            )
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // 重新生成按钮
@@ -188,7 +202,8 @@ fun DrillDownScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !uiState.isSubmitting
                         && !uiState.isGenerating
-                        && uiState.suggestedQuestions.any { it.isSelected }
+                        && (uiState.suggestedQuestions.any { it.isSelected }
+                            || uiState.customQuestions.any { it.isSelected })
             ) {
                 if (uiState.isSubmitting) {
                     LoadingIndicator()
@@ -198,6 +213,93 @@ fun DrillDownScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun CustomQuestionSection(
+    customQuestions: List<SuggestedQuestion>,
+    onAddQuestion: (String) -> Unit,
+    onRemoveQuestion: (Int) -> Unit,
+    onToggleQuestion: (Int) -> Unit,
+    enabled: Boolean
+) {
+    var newQuestionText by remember { mutableStateOf("") }
+
+    Column {
+        Text(
+            text = "添加自定义问题:",
+            style = MaterialTheme.typography.titleSmall
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = newQuestionText,
+                onValueChange = { newQuestionText = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("输入自定义问题...") },
+                singleLine = true,
+                enabled = enabled
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = {
+                    if (newQuestionText.isNotBlank()) {
+                        onAddQuestion(newQuestionText)
+                        newQuestionText = ""
+                    }
+                },
+                enabled = enabled && newQuestionText.isNotBlank()
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "添加")
+            }
+        }
+
+        if (customQuestions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            val selectedCount = customQuestions.count { it.isSelected }
+            Text(
+                text = "已选: $selectedCount / ${customQuestions.size}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+
+            customQuestions.forEachIndexed { index, sq ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = sq.isSelected,
+                        onCheckedChange = { onToggleQuestion(index) }
+                    )
+                    Text(
+                        text = sq.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 4.dp)
+                    )
+                    IconButton(
+                        onClick = { onRemoveQuestion(index) },
+                        enabled = enabled
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
         }
     }
 }

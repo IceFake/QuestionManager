@@ -15,6 +15,7 @@ import com.example.questionmanager.domain.model.RelationType
 import com.example.questionmanager.domain.model.toDomain
 import com.example.questionmanager.domain.model.toEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -84,6 +85,34 @@ class QuestionRepository @Inject constructor(
         }
     }
 
+    /**
+     * 递归获取指定问题的所有祖先问题（包括直接和间接父级）
+     * 使用深度优先搜索避免循环引用
+     */
+    suspend fun getAllAncestors(childId: Long): List<Question> {
+        val ancestors = mutableSetOf<Question>()
+        val visited = mutableSetOf<Long>()
+        
+        suspend fun dfs(currentId: Long) {
+            if (currentId in visited) return // 避免循环引用
+            visited.add(currentId)
+            
+            val directParents = questionLinkDao.getLinkedParentQuestions(currentId).map { entities ->
+                entities.map { it.toDomain() }
+            }.first() // 获取Flow的第一个值
+            
+            for (parent in directParents) {
+                if (parent.id !in visited) {
+                    ancestors.add(parent)
+                    dfs(parent.id)
+                }
+            }
+        }
+        
+        dfs(childId)
+        return ancestors.toList()
+    }
+
     suspend fun createLink(parentId: Long, childId: Long, type: RelationType = RelationType.DRILL_DOWN) {
         questionLinkDao.insertLink(
             QuestionLinkEntity(
@@ -147,6 +176,10 @@ class QuestionRepository @Inject constructor(
         promptDao.clearDefaultPrompt()
         val entity = promptDao.getPromptById(id) ?: return
         promptDao.updatePrompt(entity.copy(isDefault = true, updatedAt = System.currentTimeMillis()))
+    }
+
+    suspend fun getPromptById(id: Long): Prompt? {
+        return promptDao.getPromptById(id)?.toDomain()
     }
 }
 
