@@ -106,6 +106,9 @@ dependencies {
     // Markdown
     implementation(libs.markdown.renderer)
 
+    // PDF
+    implementation(libs.pdfbox.android)
+
     // Test
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -73,6 +74,10 @@ fun SettingsScreen(
     // 用于存储文件选择回调（由 PromptDialog 设置）
     var onMdFileSelected by remember { mutableStateOf<((String) -> Unit)?>(null) }
 
+    // 用于存储 PDF 选择时的当前提示词内容和结果回调
+    var pdfPromptCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var pdfCurrentPrompt by remember { mutableStateOf("") }
+
     // MD 文件选择器
     val mdFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -87,6 +92,22 @@ fun SettingsScreen(
             } catch (e: Exception) {
                 viewModel.showMessage("导入失败: ${e.message}")
             }
+        }
+    }
+
+    // PDF 文件选择器
+    val pdfFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.importPdfAndEnhancePrompt(
+                context = context,
+                uri = it,
+                currentPrompt = pdfCurrentPrompt,
+                onResult = { enhancedPrompt ->
+                    pdfPromptCallback?.invoke(enhancedPrompt)
+                }
+            )
         }
     }
 
@@ -236,6 +257,7 @@ fun SettingsScreen(
             title = "新建提示词",
             initialName = "",
             initialContent = "",
+            isEnhancing = uiState.isEnhancingPrompt,
             onConfirm = { name, content ->
                 viewModel.createPrompt(name, content)
                 showCreatePromptDialog = false
@@ -244,6 +266,11 @@ fun SettingsScreen(
             onImportMd = { callback ->
                 onMdFileSelected = callback
                 mdFilePicker.launch(arrayOf("text/markdown", "text/plain", "text/*"))
+            },
+            onImportPdf = { currentContent, callback ->
+                pdfCurrentPrompt = currentContent
+                pdfPromptCallback = callback
+                pdfFilePicker.launch(arrayOf("application/pdf"))
             }
         )
     }
@@ -254,6 +281,7 @@ fun SettingsScreen(
             title = "编辑提示词",
             initialName = prompt.name,
             initialContent = prompt.systemPrompt,
+            isEnhancing = uiState.isEnhancingPrompt,
             onConfirm = { name, content ->
                 viewModel.updatePrompt(prompt.copy(name = name, systemPrompt = content))
                 editingPrompt = null
@@ -262,6 +290,11 @@ fun SettingsScreen(
             onImportMd = { callback ->
                 onMdFileSelected = callback
                 mdFilePicker.launch(arrayOf("text/markdown", "text/plain", "text/*"))
+            },
+            onImportPdf = { currentContent, callback ->
+                pdfCurrentPrompt = currentContent
+                pdfPromptCallback = callback
+                pdfFilePicker.launch(arrayOf("application/pdf"))
             }
         )
     }
@@ -347,9 +380,11 @@ private fun PromptDialog(
     title: String,
     initialName: String,
     initialContent: String,
+    isEnhancing: Boolean = false,
     onConfirm: (name: String, content: String) -> Unit,
     onDismiss: () -> Unit,
-    onImportMd: (onContentLoaded: (String) -> Unit) -> Unit = {}
+    onImportMd: (onContentLoaded: (String) -> Unit) -> Unit = {},
+    onImportPdf: (currentContent: String, onContentLoaded: (String) -> Unit) -> Unit = { _, _ -> }
 ) {
     var name by remember { mutableStateOf(initialName) }
     var content by remember { mutableStateOf(initialContent) }
@@ -389,12 +424,32 @@ private fun PromptDialog(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("导入 MD 文档")
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        onImportPdf(content) { enhancedContent ->
+                            content = enhancedContent
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isEnhancing
+                ) {
+                    if (isEnhancing) {
+                        LoadingIndicator()
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("AI 正在完善提示词…")
+                    } else {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("导入 PDF 简历完善提示词")
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(name, content) },
-                enabled = name.isNotBlank() && content.isNotBlank()
+                enabled = name.isNotBlank() && content.isNotBlank() && !isEnhancing
             ) {
                 Text("确认")
             }
