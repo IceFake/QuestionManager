@@ -1,5 +1,8 @@
 package com.example.questionmanager.ui.screen.settings
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -46,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -63,6 +68,27 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showCreatePromptDialog by remember { mutableStateOf(false) }
     var editingPrompt by remember { mutableStateOf<Prompt?>(null) }
+    val context = LocalContext.current
+
+    // 用于存储文件选择回调（由 PromptDialog 设置）
+    var onMdFileSelected by remember { mutableStateOf<((String) -> Unit)?>(null) }
+
+    // MD 文件选择器
+    val mdFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            try {
+                val text = context.contentResolver.openInputStream(it)
+                    ?.bufferedReader()
+                    ?.use { reader -> reader.readText() }
+                    ?: ""
+                onMdFileSelected?.invoke(text)
+            } catch (e: Exception) {
+                viewModel.showMessage("导入失败: ${e.message}")
+            }
+        }
+    }
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
@@ -214,7 +240,11 @@ fun SettingsScreen(
                 viewModel.createPrompt(name, content)
                 showCreatePromptDialog = false
             },
-            onDismiss = { showCreatePromptDialog = false }
+            onDismiss = { showCreatePromptDialog = false },
+            onImportMd = { callback ->
+                onMdFileSelected = callback
+                mdFilePicker.launch(arrayOf("text/markdown", "text/plain", "text/*"))
+            }
         )
     }
 
@@ -228,7 +258,11 @@ fun SettingsScreen(
                 viewModel.updatePrompt(prompt.copy(name = name, systemPrompt = content))
                 editingPrompt = null
             },
-            onDismiss = { editingPrompt = null }
+            onDismiss = { editingPrompt = null },
+            onImportMd = { callback ->
+                onMdFileSelected = callback
+                mdFilePicker.launch(arrayOf("text/markdown", "text/plain", "text/*"))
+            }
         )
     }
 }
@@ -314,7 +348,8 @@ private fun PromptDialog(
     initialName: String,
     initialContent: String,
     onConfirm: (name: String, content: String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onImportMd: (onContentLoaded: (String) -> Unit) -> Unit = {}
 ) {
     var name by remember { mutableStateOf(initialName) }
     var content by remember { mutableStateOf(initialContent) }
@@ -341,6 +376,19 @@ private fun PromptDialog(
                         .height(150.dp),
                     maxLines = 8
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        onImportMd { importedContent ->
+                            content = importedContent
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.FileOpen, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("导入 MD 文档")
+                }
             }
         },
         confirmButton = {

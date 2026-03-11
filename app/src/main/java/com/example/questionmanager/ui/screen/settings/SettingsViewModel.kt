@@ -150,5 +150,9 @@ class SettingsViewModel @Inject constructor(
     fun clearMessage() {
         _uiState.value = _uiState.value.copy(message = null)
     }
+
+    fun showMessage(msg: String) {
+        _uiState.value = _uiState.value.copy(message = msg)
+    }
 }
 
